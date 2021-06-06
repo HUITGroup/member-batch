@@ -1,6 +1,7 @@
 package batch
 
 import (
+	"context"
 	"log"
 	"os"
 	"time"
@@ -8,48 +9,50 @@ import (
 	"github.com/bwmarrin/discordgo"
 )
 
-var token string
+type PubSubMessage struct {
+	Data []byte `json:"data"`
+}
+
 var dg *discordgo.Session
 var guildID, announceChannelID string
 
 func init() {
 	var err error
+	token := os.Getenv("DISCORD_TOKEN")
 
-	token = os.Getenv("DISCORD_TOKEN")
 	dg, err = discordgo.New("Bot " + token)
 	if err != nil {
 		log.Fatal("Error creating Discord session, ", err)
 	}
+	dg.Identify.Intents = discordgo.IntentsGuildMembers
 
 	guildID = os.Getenv("GUILD_ID")
 	announceChannelID = os.Getenv("ANNOUNCE_CHANNEL_ID")
 }
 
-func Batch() {
+func MemberBatch(ctx context.Context, m PubSubMessage) error {
 	if err := dg.Open(); err != nil {
 		log.Fatalln("Error opening connection,", err)
+	} else {
+		log.Println("success: Open connect")
 	}
 
-	MemberBatch(dg)
-
-	dg.Close()
-
-	log.Println("Batch Success!")
-}
-
-func MemberBatch(dg *discordgo.Session) {
-
-	jst := time.FixedZone("Asia/Tokyo", 9*60*60)
-	nowTime := time.Now().In(jst)
-
-	// 日数ロールを探す
+	// 日数ロールを探すため
 	guild, err := dg.Guild(guildID)
 	if err != nil {
-		log.Println(err)
-		return
+		return err
 	}
 
+	// member のロール取得のため
+	mems, err := dg.GuildMembers(guildID, "", 1000)
+	if err != nil {
+		return err
+	}
+
+	jst := time.FixedZone("Asia/Tokyo", 9*60*60)
 	layout := "2006/1/2"
+
+	nowTime := time.Now().In(jst)
 	for _, role := range guild.Roles {
 		trialTimeRole, err := time.ParseInLocation(layout, role.Name, jst)
 
@@ -62,10 +65,9 @@ func MemberBatch(dg *discordgo.Session) {
 		if trialTimeRole.Before(nowTime) {
 			log.Println("kick: ", trialTimeRole.Format(layout))
 			// kick
-			members, err := searchRoleMembers(dg, guild.ID, role.ID)
+			members, err := searchRoleMembers(mems, guild.ID, role.ID)
 			if err != nil {
-				log.Println(err)
-				return
+				return err
 			}
 
 			// userごとにkick
@@ -85,10 +87,9 @@ func MemberBatch(dg *discordgo.Session) {
 		// パースできて、かつ体験期間終了が2週間後の人は連絡
 		if nowTime.AddDate(0, 0, 14).Format(layout) == trialTimeRole.Format(layout) {
 			log.Println("kick after week: ", trialTimeRole)
-			members, err := searchRoleMembers(dg, guild.ID, role.ID)
+			members, err := searchRoleMembers(mems, guild.ID, role.ID)
 			if err != nil {
-				log.Println(err)
-				return
+				return err
 			}
 
 			for _, mem := range members {
@@ -102,10 +103,9 @@ func MemberBatch(dg *discordgo.Session) {
 		// パースできて、かつ体験期間終了が1週間後の人は連絡
 		if nowTime.AddDate(0, 0, 7).Format(layout) == trialTimeRole.Format(layout) {
 			log.Println("kick after week: ", trialTimeRole)
-			members, err := searchRoleMembers(dg, guild.ID, role.ID)
+			members, err := searchRoleMembers(mems, guild.ID, role.ID)
 			if err != nil {
-				log.Println(err)
-				return
+				return err
 			}
 
 			for _, mem := range members {
@@ -119,10 +119,9 @@ func MemberBatch(dg *discordgo.Session) {
 		// パースできて、かつ体験期間終了が明日の人がいる場合、確認用の連絡
 		if nowTime.AddDate(0, 0, 1).Format(layout) == trialTimeRole.Format(layout) {
 			log.Println("kick tommorow: ", trialTimeRole)
-			members, err := searchRoleMembers(dg, guild.ID, role.ID)
+			members, err := searchRoleMembers(mems, guild.ID, role.ID)
 			if err != nil {
-				log.Println(err)
-				return
+				return err
 			}
 
 			for _, mem := range members {
@@ -133,18 +132,17 @@ func MemberBatch(dg *discordgo.Session) {
 		}
 		// パースできて、かつ体験入部期間が直近に迫っていない人はスキップ
 	}
+
+	dg.Close()
+
+	log.Println("Batch Success!")
+	return nil
 }
 
-func searchRoleMembers(dg *discordgo.Session, guildID, roleID string) (members []*discordgo.Member, err error) {
+func searchRoleMembers(mems []*discordgo.Member, guildID, roleID string) (members []*discordgo.Member, err error) {
 	// 引数で受け取ったロールIDを持つ メンバー(部員) をmembersスライスにappend
 	// 体験入部期間のリミット権限は最大で1人1つのため、そのメンバーにリミット権限が既にあればそれ以上調べる必要はない
-	mems, err := dg.GuildMembers(guildID, "", 1000)
-	if err != nil {
-		return members, err
-	}
-
 	for _, mem := range mems {
-		log.Println(mem)
 		for _, memRoleID := range mem.Roles {
 			if memRoleID == roleID {
 				members = append(members, mem)
