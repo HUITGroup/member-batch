@@ -1,4 +1,4 @@
-package main
+package batch
 
 import (
 	"log"
@@ -6,37 +6,38 @@ import (
 	"time"
 
 	"github.com/bwmarrin/discordgo"
-	"github.com/joho/godotenv"
 )
 
-func main() {
-	err := godotenv.Load()
+var token string
+var dg *discordgo.Session
+var guildID, announceChannelID string
+
+func init() {
+	var err error
+
+	token = os.Getenv("DISCORD_TOKEN")
+	dg, err = discordgo.New("Bot " + token)
 	if err != nil {
-		log.Println("info: no.env file (If you are using Docker, it works fine")
+		log.Fatal("Error creating Discord session, ", err)
 	}
+
+	guildID = os.Getenv("GUILD_ID")
+	announceChannelID = os.Getenv("ANNOUNCE_CHANNEL_ID")
 }
 
-func batch(dg *discordgo.Session) {
-	for {
-		if isBatchTime() {
-			trialMemberBatch(dg)
-			log.Println("info: end batch")
-			time.Sleep(1 * time.Hour)
-		}
+func Batch() {
+	if err := dg.Open(); err != nil {
+		log.Fatalln("Error opening connection,", err)
 	}
+
+	MemberBatch(dg)
+
+	dg.Close()
+
+	log.Println("Batch Success!")
 }
 
-func isBatchTime() bool {
-	location := time.FixedZone("Asia/Tokyo", 9*60*60)
-	rawNowTime := time.Now().In(location)
-	nowHour := rawNowTime.Format("15")
-
-	return nowHour == "14"
-}
-
-func trialMemberBatch(dg *discordgo.Session) {
-	guildID := os.Getenv("GUILD_ID")
-	announceChannelID := os.Getenv("ANNOUNCE_CHANNEL_ID")
+func MemberBatch(dg *discordgo.Session) {
 
 	jst := time.FixedZone("Asia/Tokyo", 9*60*60)
 	nowTime := time.Now().In(jst)
