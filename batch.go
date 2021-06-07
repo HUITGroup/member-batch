@@ -13,9 +13,13 @@ type PubSubMessage struct {
 	Data []byte `json:"data"`
 }
 
+// for cache
 var dg *discordgo.Session
 var token, guildID, announceChannelID string
 var err error
+
+var jst *time.Location
+var layout string
 
 func init() {
 	token = os.Getenv("DISCORD_TOKEN")
@@ -28,6 +32,9 @@ func init() {
 
 	guildID = os.Getenv("GUILD_ID")
 	announceChannelID = os.Getenv("ANNOUNCE_CHANNEL_ID")
+
+	jst = time.FixedZone("Asia/Tokyo", 9*60*60)
+	layout = "2006/1/2"
 }
 
 func MemberBatch(ctx context.Context, m PubSubMessage) error {
@@ -48,9 +55,6 @@ func MemberBatch(ctx context.Context, m PubSubMessage) error {
 	if err != nil {
 		return err
 	}
-
-	jst := time.FixedZone("Asia/Tokyo", 9*60*60)
-	layout := "2006/1/2"
 
 	nowTime := time.Now().In(jst)
 	for _, role := range guild.Roles {
@@ -151,4 +155,23 @@ func searchRoleMembers(mems []*discordgo.Member, guildID, roleID string) (member
 		}
 	}
 	return members, nil
+}
+
+func beforDaysNotify(dg *discordgo.Session, role *discordgo.Role) {
+	nowTime := time.Now().In(jst)
+	trialTimeRole, err := time.ParseInLocation(layout, role.Name, jst)
+
+	if nowTime.AddDate(0, 0, 1).Format(layout) == trialTimeRole.Format(layout) {
+		log.Println("kick tommorow: ", trialTimeRole)
+		members, err := searchRoleMembers(mems, guild.ID, role.ID)
+		if err != nil {
+			return err
+		}
+
+		for _, mem := range members {
+			mention := mem.Mention()
+			content := "自動通知: " + mention + " さんの体験入部期間が明日で終了します。\n部費の支払いが終わっている場合、" + mention + " さんの体験入部期間ロールを解除してください。"
+			dg.ChannelMessageSend(announceChannelID, content)
+		}
+	}
 }
