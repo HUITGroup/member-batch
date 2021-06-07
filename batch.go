@@ -14,11 +14,11 @@ type PubSubMessage struct {
 }
 
 var dg *discordgo.Session
-var guildID, announceChannelID string
+var token, guildID, announceChannelID string
+var err error
 
 func init() {
-	var err error
-	token := os.Getenv("DISCORD_TOKEN")
+	token = os.Getenv("DISCORD_TOKEN")
 
 	dg, err = discordgo.New("Bot " + token)
 	if err != nil {
