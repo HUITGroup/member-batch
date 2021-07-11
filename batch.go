@@ -75,7 +75,9 @@ func MemberBatch(ctx context.Context, m PubSubMessage) error {
 			for _, mem := range members {
 				mention := mem.Mention()
 				// Guestロールの削除
-				dg.GuildMemberRoleRemove(guildID, mem.User.ID, guestRoleID)
+				if err := dg.GuildMemberRoleRemove(guildID, mem.User.ID, guestRoleID); err != nil {
+					log.Println(err)
+				}
 				// 体験入部期間終了のお知らせ
 				content := mention + " さんの体験入部期間が終了しました。"
 				dg.ChannelMessageSend(announceChannelID, content)
@@ -87,7 +89,7 @@ func MemberBatch(ctx context.Context, m PubSubMessage) error {
 
 		// パースできて、かつ体験期間終了が2週間後の人は連絡
 		if nowTime.AddDate(0, 0, 14).Format(layout) == trialTimeRole.Format(layout) {
-			log.Println("kick after week: ", trialTimeRole)
+			log.Println("role remove after 2 weeks: ", trialTimeRole)
 			members, err := searchRoleMembers(mems, guild.ID, role.ID)
 			if err != nil {
 				return err
@@ -101,25 +103,9 @@ func MemberBatch(ctx context.Context, m PubSubMessage) error {
 			continue
 		}
 
-		// パースできて、かつ体験期間終了が1週間後の人は連絡
-		if nowTime.AddDate(0, 0, 7).Format(layout) == trialTimeRole.Format(layout) {
-			log.Println("kick after week: ", trialTimeRole)
-			members, err := searchRoleMembers(mems, guild.ID, role.ID)
-			if err != nil {
-				return err
-			}
-
-			for _, mem := range members {
-				mention := mem.Mention()
-				content := mention + " さんの体験入部期間はあと1週間で終了します。"
-				dg.ChannelMessageSend(announceChannelID, content)
-			}
-			continue
-		}
-
 		// パースできて、かつ体験期間終了が明日の人がいる場合、確認用の連絡
 		if nowTime.AddDate(0, 0, 1).Format(layout) == trialTimeRole.Format(layout) {
-			log.Println("kick tommorow: ", trialTimeRole)
+			log.Println("role remove after tommorow: ", trialTimeRole)
 			members, err := searchRoleMembers(mems, guild.ID, role.ID)
 			if err != nil {
 				return err
