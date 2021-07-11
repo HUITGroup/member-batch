@@ -14,7 +14,7 @@ type PubSubMessage struct {
 }
 
 var dg *discordgo.Session
-var token, guildID, announceChannelID string
+var token, guildID, announceChannelID, guestRoleID string
 var err error
 
 func init() {
@@ -28,6 +28,7 @@ func init() {
 
 	guildID = os.Getenv("GUILD_ID")
 	announceChannelID = os.Getenv("ANNOUNCE_CHANNEL_ID")
+	guestRoleID = os.Getenv("GUEST_ROLE_ID")
 }
 
 func MemberBatch(ctx context.Context, m PubSubMessage) error {
@@ -72,11 +73,11 @@ func MemberBatch(ctx context.Context, m PubSubMessage) error {
 
 			// userごとにkick
 			for _, mem := range members {
-				roleUserID := mem.User.ID
-				userName := mem.User.Username
-				byeMessage := "体験入部期間が終了したため"
-				dg.GuildMemberDeleteWithReason(guildID, roleUserID, byeMessage)
-				content := userName + " さんの体験入部期間が終了しました。"
+				mention := mem.Mention()
+				// Guestロールの削除
+				dg.GuildMemberRoleRemove(guildID, mem.User.ID, guestRoleID)
+				// 体験入部期間終了のお知らせ
+				content := mention + " さんの体験入部期間が終了しました。"
 				dg.ChannelMessageSend(announceChannelID, content)
 			}
 			// del role
@@ -94,7 +95,7 @@ func MemberBatch(ctx context.Context, m PubSubMessage) error {
 
 			for _, mem := range members {
 				mention := mem.Mention()
-				content := mention + " さんの体験入部期間はあと2週間で終了します。\n今後も活動を続けたい場合は、ぜひ入部をお願いします。"
+				content := mention + " さんの体験入部期間はあと2週間で終了します。"
 				dg.ChannelMessageSend(announceChannelID, content)
 			}
 			continue
@@ -110,7 +111,7 @@ func MemberBatch(ctx context.Context, m PubSubMessage) error {
 
 			for _, mem := range members {
 				mention := mem.Mention()
-				content := mention + " さんの体験入部期間はあと1週間で終了します。\n今後も活動を続けたい場合は、ぜひ入部をお願いします。"
+				content := mention + " さんの体験入部期間はあと1週間で終了します。"
 				dg.ChannelMessageSend(announceChannelID, content)
 			}
 			continue
@@ -126,7 +127,7 @@ func MemberBatch(ctx context.Context, m PubSubMessage) error {
 
 			for _, mem := range members {
 				mention := mem.Mention()
-				content := "自動通知: " + mention + " さんの体験入部期間が明日で終了します。\n部費の支払いが終わっている場合、" + mention + " さんの体験入部期間ロールを解除してください。"
+				content := mention + "さんの体験入部期間は明日で終了します。"
 				dg.ChannelMessageSend(announceChannelID, content)
 			}
 		}
