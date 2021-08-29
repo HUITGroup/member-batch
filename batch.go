@@ -32,11 +32,11 @@ func init() {
 }
 
 func MemberBatch(ctx context.Context, m PubSubMessage) error {
-	if err := dg.Open(); err != nil {
-		log.Fatalln("Error opening connection,", err)
-	} else {
-		log.Println("success: Open connect")
+	err := dg.Open()
+	if err != nil {
+		panic(1)
 	}
+	defer dg.Close()
 
 	// 日数ロールを探すため
 	guild, err := dg.Guild(guildID)
@@ -65,7 +65,6 @@ func MemberBatch(ctx context.Context, m PubSubMessage) error {
 		// パースできて、かつ体験期間が今日より前の人はkickして、ロールを消す
 		if trialTimeRole.Before(nowTime) {
 			log.Println("kick: ", trialTimeRole.Format(layout))
-			// kick
 			members, err := searchRoleMembers(mems, guild.ID, role.ID)
 			if err != nil {
 				return err
@@ -75,7 +74,9 @@ func MemberBatch(ctx context.Context, m PubSubMessage) error {
 			for _, mem := range members {
 				mention := mem.Mention()
 				// Guestロールの削除
-				if err := dg.GuildMemberRoleRemove(guildID, mem.User.ID, guestRoleID); err != nil {
+				err = dg.GuildMemberRoleRemove(guildID, mem.User.ID, guestRoleID)
+				if err != nil {
+
 					log.Println(err)
 				}
 				// 体験入部期間終了のお知らせ
@@ -87,24 +88,8 @@ func MemberBatch(ctx context.Context, m PubSubMessage) error {
 			continue
 		}
 
-		// パースできて、かつ体験期間終了が2週間後の人は連絡
-		if nowTime.AddDate(0, 0, 14).Format(layout) == trialTimeRole.Format(layout) {
-			log.Println("role remove after 2 weeks: ", trialTimeRole)
-			members, err := searchRoleMembers(mems, guild.ID, role.ID)
-			if err != nil {
-				return err
-			}
-
-			for _, mem := range members {
-				mention := mem.Mention()
-				content := mention + " さんの体験入部期間はあと2週間で終了します。"
-				dg.ChannelMessageSend(announceChannelID, content)
-			}
-			continue
-		}
-
 		// パースできて、かつ体験期間終了が明日の人がいる場合、確認用の連絡
-		if nowTime.AddDate(0, 0, 1).Format(layout) == trialTimeRole.Format(layout) {
+		if trialTimeRole.Format(layout) == nowTime.AddDate(0, 0, 1).Format(layout) {
 			log.Println("role remove after tommorow: ", trialTimeRole)
 			members, err := searchRoleMembers(mems, guild.ID, role.ID)
 			if err != nil {
@@ -119,8 +104,6 @@ func MemberBatch(ctx context.Context, m PubSubMessage) error {
 		}
 		// パースできて、かつ体験入部期間が直近に迫っていない人はスキップ
 	}
-
-	dg.Close()
 
 	log.Println("Batch Success!")
 	return nil
