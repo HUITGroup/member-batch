@@ -3,7 +3,6 @@ package batch
 import (
 	"context"
 	"fmt"
-	"log"
 	"os"
 	"time"
 
@@ -20,16 +19,14 @@ var err error
 
 func init() {
 	token = os.Getenv("DISCORD_TOKEN")
-
-	dg, err = discordgo.New("Bot " + token)
-	if err != nil {
-		log.Fatal("Error creating Discord session, ", err)
-	}
-	dg.Identify.Intents = discordgo.IntentsGuildMembers
-
 	guildID = os.Getenv("GUILD_ID")
 	announceChannelID = os.Getenv("ANNOUNCE_CHANNEL_ID")
 	guestRoleID = os.Getenv("GUEST_ROLE_ID")
+
+	dg, err = discordgo.New("Bot " + token)
+	if err != nil {
+		panic(err)
+	}
 }
 
 func MemberBatch(ctx context.Context, m PubSubMessage) error {
@@ -52,20 +49,16 @@ func MemberBatch(ctx context.Context, m PubSubMessage) error {
 	jst := time.FixedZone("Asia/Tokyo", 9*60*60)
 
 	year, month, day := time.Now().Date()
-	Today := time.Date(year, month, day, 0, 0, 0, 0, jst)
+	today := time.Date(year, month, day, 0, 0, 0, 0, jst)
 
 	for _, guildRole := range guild.Roles {
-		trialTime, err := time.ParseInLocation(layout, guildRole.Name, jst)
+		trialLimit, err := time.ParseInLocation(layout, guildRole.Name, jst)
 		if err != nil {
-			return err
-		}
-
-		// パース出来ないロールは関係ないのでスキップ
-		if err != nil {
+			// パース出来ないロールは関係ないのでスキップ
 			continue
 		}
 
-		if trialTime.Equal(Today.AddDate(0, 0, 7)) {
+		if trialLimit.Equal(today.AddDate(0, 0, 7)) {
 			roleMembers := findRoleMembers(guildMembers, guild.ID, guildRole.ID)
 			if err != nil {
 				return err
@@ -74,15 +67,16 @@ func MemberBatch(ctx context.Context, m PubSubMessage) error {
 			if err != nil {
 				return err
 			}
+			continue
 		}
 
 		// 体験入部期間を過ぎていた場合
-		if trialTime.After(Today) {
+		if trialLimit.Before(today) {
 			roleMembers := findRoleMembers(guildMembers, guild.ID, guildRole.ID)
 			if err != nil {
 				return err
 			}
-			err = removeRoleFromMembers(roleMembers, guild.ID, guestRoleID)
+			err = removeRolesFromMembers(roleMembers, guild.ID, guildRole.ID, guestRoleID)
 			if err != nil {
 				return err
 			}
@@ -90,7 +84,6 @@ func MemberBatch(ctx context.Context, m PubSubMessage) error {
 			if err != nil {
 				return err
 			}
-			continue
 		}
 	}
 	return nil
@@ -99,7 +92,7 @@ func MemberBatch(ctx context.Context, m PubSubMessage) error {
 func notifyMembersKickDay(members []*discordgo.Member, day int) error {
 	for _, mem := range members {
 		mention := mem.Mention()
-		content := fmt.Sprintf(mention+"さんの体験入部期間はあと", day, "日で終了します。")
+		content := fmt.Sprintf(mention+"さんの体験入部期間はあと %d 日で終了します。", day)
 		_, err := dg.ChannelMessageSend(announceChannelID, content)
 		if err != nil {
 			return err
@@ -108,16 +101,20 @@ func notifyMembersKickDay(members []*discordgo.Member, day int) error {
 	return nil
 }
 
-func removeRoleFromMembers(members []*discordgo.Member, guildID, roleID string) error {
+func removeRolesFromMembers(members []*discordgo.Member, guildID, guildRoleID, guestRoleID string) error {
 	for _, mem := range members {
-		err := dg.GuildMemberRoleRemove(guildID, mem.User.ID, roleID)
+		content := mem.Mention() + " さんの体験入部期間が終了しました。"
+		_, err = dg.ChannelMessageSend(announceChannelID, content)
 		if err != nil {
 			return err
 		}
 
-		mention := mem.Mention()
-		content := mention + " さんの体験入部期間が終了しました。"
-		_, err = dg.ChannelMessageSend(announceChannelID, content)
+		err = dg.GuildMemberRoleRemove(guildID, mem.User.ID, guestRoleID)
+		if err != nil {
+			return err
+		}
+
+		err = dg.GuildMemberRoleRemove(guildID, mem.User.ID, guildRoleID)
 		if err != nil {
 			return err
 		}
