@@ -92,7 +92,7 @@ func MemberBatch(ctx context.Context, m PubSubMessage) error {
 func notifyMembersKickDay(members []*discordgo.Member, day int) error {
 	for _, mem := range members {
 		mention := mem.Mention()
-		content := fmt.Sprintf(mention+"さんの体験入部期間はあと %d 日で終了します。", day)
+		content := fmt.Sprintf(mention+"さんの体験入部期間はあと %d 日で終了します。本入部希望の場合は #本入部について の手順に沿って部費をお納めください。", day)
 		_, err := dg.ChannelMessageSend(announceChannelID, content)
 		if err != nil {
 			return err
